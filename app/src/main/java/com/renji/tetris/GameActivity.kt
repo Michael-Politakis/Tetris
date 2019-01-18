@@ -11,6 +11,7 @@ import com.renji.tetris.storage.AppPreferences
 import com.renji.tetris.view.TetrisView
 
 class GameActivity : AppCompatActivity() {
+
     var tvHighScore: TextView? = null
     var tvCurrentScore: TextView? = null
     private lateinit var tetrisView: TetrisView
@@ -38,17 +39,17 @@ class GameActivity : AppCompatActivity() {
         updateCurrentScore()
     }
 
-    private fun btnRestartClick(view : View){
+    private fun btnRestartClick(view: View) {
         appModel.restartGame()
     }
 
-    private fun onTetrisViewTouch(view: View, event: MotionEvent):
-            Boolean{
-        if (appModel.isGameOver() || appModel.isGameAwaitingStart()){
+    private fun onTetrisViewTouch(view: View, event: MotionEvent): Boolean {
+        if (appModel.isGameOver() || appModel.isGameAwaitingStart()) {
             appModel.startGame()
             tetrisView.setGameCommandWithDelay(AppModel.Motions.DOWN)
-        } else if(appModel.isGameActive()){
-            when (resolveTouchDirection(view, event)){
+
+        } else if (appModel.isGameActive()) {
+            when (resolveTouchDirection(view, event)) {
                 0 -> moveTetromino(AppModel.Motions.LEFT)
                 1 -> moveTetromino(AppModel.Motions.ROTATE)
                 2 -> moveTetromino(AppModel.Motions.DOWN)
@@ -61,26 +62,27 @@ class GameActivity : AppCompatActivity() {
     private fun resolveTouchDirection(view: View, event: MotionEvent): Int {
         val x = event.x / view.width
         val y = event.y / view.height
-        val direction : Int
+        val direction: Int
 
         direction = if (y > x) {
-            if (x> 1 - y) 2 else 0
-        }
-        else {
-            if (x > 1- y) 3 else 1
+            if (x > 1 - y) 2 else 0
+        } else {
+            if (x > 1 - y) 3 else 1
         }
         return direction
     }
 
-    private fun moveTetromino(motion: AppModel.Motions){
-        if (appModel.isGameActive()){
+    private fun moveTetromino(motion: AppModel.Motions) {
+        if (appModel.isGameActive()) {
             tetrisView.setGameCommand(motion)
         }
     }
-    private fun updateHighScore(){
+
+    private fun updateHighScore() {
         tvHighScore?.text = "${appPreferences?.getHighScore()}"
     }
-    private fun updateCurrentScore(){
+
+    private fun updateCurrentScore() {
         tvCurrentScore?.text = "0"
     }
 }

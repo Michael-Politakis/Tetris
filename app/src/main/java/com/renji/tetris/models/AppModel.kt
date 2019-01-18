@@ -10,6 +10,7 @@ import java.lang.NumberFormatException
 import java.text.FieldPosition
 
 class AppModel {
+
     var score: Int = 0
     private var preferences: AppPreferences? = null
 
@@ -21,83 +22,10 @@ class AppModel {
         FieldConstants.COLUMN_COUNT.value
     )
 
-    enum class Statuses {
-        AWAITING_START, ACTIVE, INACTIVE, OVER
-    }
-
-    enum class Motions {
-        LEFT, RIGHT, DOWN, ROTATE
-    }
-
-    fun setPreferences(preferences: AppPreferences?) {
-        this.preferences = preferences
-    }
-
-    fun getCellStatus(row: Int, column: Int): Byte? {
-        return field[row][column]
-    }
-
-    private fun setCellStatus(row: Int, column: Int, status: Byte?) {
-        if (status != null) {
-            field[row][column] = status
-        }
-    }
-
-    fun isGameOver(): Boolean {
-        return currentState == Statuses.OVER.name
-    }
-
-    fun isGameActive(): Boolean {
-        return currentState == Statuses.ACTIVE.name
-    }
-
-    fun isGameAwaitingStart(): Boolean {
-        return currentState == Statuses.AWAITING_START.name
-    }
-
-    private fun boostScore() {
-        score += 10
-        if (score > preferences?.getHighScore() as Int)
-            preferences?.saveHighScore(score)
-    }
-
-    private fun generateNextBlock() {
-        currentBlock = Block.createBlock()
-    }
-
-    private fun validTranslation(position: Point, shape: Array<ByteArray>):
-            Boolean {
-        return if (position.y < 0 || position.x < 0) {
-            false
-        } else if (position.y + shape.size > FieldConstants.ROW_COUNT.value) {
-            false
-        } else if (position.x + shape[0].size > FieldConstants.COLUMN_COUNT.value) {
-            false
-        } else {
-            for (i in 0 until shape.size) {
-                for (j in 0 until shape[i].size) {
-                    val y = position.y + i
-                    val x = position.x + j
-
-                    if (CellConstants.EMPTY.value != shape[i][j] &&
-                        CellConstants.EMPTY.value != field[y][x]
-                    ) {
-                        return false
-                    }
-                }
-            }
-            true
-        }
-    }
-
-    private fun moveValid(position: Point, frameNumber: Int?): Boolean {
-        val shape: Array<ByteArray>? = currentBlock?.getShape(frameNumber as Int)
-        return validTranslation(position, shape as Array<ByteArray>)
-    }
-
     fun generateField(action: String) {
         if (isGameActive()) {
             resetField()
+
             var frameNumber: Int? = currentBlock?.frameNumber
             val coordinate: Point? = Point()
             coordinate?.x = currentBlock?.position?.x
@@ -122,13 +50,11 @@ class AppModel {
                         }
                     }
                 }
-
             }
+
             if (!moveValid(coordinate as Point, frameNumber)) {
-                translateBlock(
-                    currentBlock?.position as Point,
-                    currentBlock?.frameNumber as Int
-                )
+                translateBlock(currentBlock?.position as Point, currentBlock?.frameNumber as Int)
+
                 if (Motions.DOWN.name == action) {
                     boostScore()
                     persistCellData()
@@ -136,11 +62,12 @@ class AppModel {
                     generateNextBlock()
 
                     if (!blockAdditionPossible()) {
-                        currentState = Statuses.OVER.name;
-                        currentBlock = null;
-                        resetField(false);
+                        currentState = Statuses.OVER.name
+                        currentBlock = null
+                        resetField(false)
                     }
                 }
+
             } else {
                 if (frameNumber != null) {
                     translateBlock(coordinate, frameNumber)
@@ -153,19 +80,83 @@ class AppModel {
     private fun resetField(ephemeralCellsOnly: Boolean = true) {
         for (i in 0 until FieldConstants.ROW_COUNT.value) {
             (0 until FieldConstants.COLUMN_COUNT.value)
-                .filter {
-                    !ephemeralCellsOnly || field[i][it] ==
-                            CellConstants.EPHEMERAL.value
-                }
+                .filter { !ephemeralCellsOnly || field[i][it] == CellConstants.EPHEMERAL.value }
                 .forEach { field[i][it] = CellConstants.EMPTY.value }
         }
     }
 
+    private fun translateBlock(position: Point, frameNumber: Int) {
+        synchronized(field) {
+            val shape: Array<ByteArray>? = currentBlock?.getShape(frameNumber)
+
+            if (shape != null) {
+                // All cell is correct - add the data:
+                for (i in shape.indices) {
+                    for (j in 0 until shape[i].size) {
+                        val y = position.y + i
+                        val x = position.x + j
+                        if (CellConstants.EMPTY.value != shape[i][j]) {
+                            field[y][x] = shape[i][j]
+                        }
+                    }
+                }
+            }
+
+        }
+    }
+
+    private fun moveValid(position: Point, frameNumber: Int?): Boolean {
+        val shape: Array<ByteArray>? = currentBlock?.getShape(frameNumber as Int)
+        return validTranslation(position, shape as Array<ByteArray>)
+    }
+
+    private fun validTranslation(position: Point, shape: Array<ByteArray>): Boolean {
+        return if (position.y < 0 || position.x < 0) {
+            false
+        } else if (position.y + shape.size > FieldConstants.ROW_COUNT.value) {
+            false
+        } else if (position.x + shape[0].size > FieldConstants.COLUMN_COUNT.value) {
+            false
+        } else {
+            // Check all the items in field:
+            for (i in 0 until shape.size) {
+                for (j in 0 until shape[i].size) {
+
+                    val y = position.y + i
+                    val x = position.x + j
+
+                    if (CellConstants.EMPTY.value != shape[i][j] && CellConstants.EMPTY.value != field[y][x]) {
+                        return false
+                    }
+                }
+            }
+            true
+        }
+    }
+
+    private fun generateNextBlock() {
+        currentBlock = Block.createBlock()
+    }
+
+    private fun blockAdditionPossible(): Boolean {
+        // Check the validity of new block:
+        if (!moveValid(currentBlock?.position as Point, currentBlock?.frameNumber)) {
+            // GAME IS OVER!
+            return false
+        }
+        return true
+    }
+
     private fun persistCellData() {
+        // set all the dynamic data as static:
         for (i in 0 until field.size) {
             for (j in 0 until field[i].size) {
-                var status = currentBlock?.staticValue
-                setCellStatus(i, j, status)
+                var status = getCellStatus(i, j)
+
+                if (status == CellConstants.EPHEMERAL.value) {
+                    status = currentBlock?.staticValue
+                    setCellStatus(i, j, status)
+                }
             }
         }
     }
@@ -177,43 +168,13 @@ class AppModel {
             for (j in 0 until field[i].size) {
                 val status = getCellStatus(i, j)
                 val isEmpty = CellConstants.EMPTY.value == status
+
                 if (isEmpty)
                     emptyCells++
             }
             if (emptyCells == 0)
                 shiftRows(i)
-
         }
-    }
-
-    private fun translateBlock(position: Point, frameNumber: Int) {
-        synchronized(field) {
-            val shape: Array<ByteArray>? = currentBlock?.getShape(frameNumber)
-
-            if (shape != null) {
-                for (i in shape.indices) {
-                    for (j in 0 until shape[i].size) {
-                        val y = position.y + i
-                        val x = position.x + j
-
-                        if (CellConstants.EMPTY.value != shape[i][j]) {
-                            field[y][x] = shape[i][j]
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun blockAdditionPossible(): Boolean {
-        if (!moveValid(
-                currentBlock?.position as Point,
-                currentBlock?.frameNumber
-            )
-        ) {
-            return false
-        }
-        return true
     }
 
     private fun shiftRows(nToRow: Int) {
@@ -223,9 +184,23 @@ class AppModel {
                     setCellStatus(j + 1, m, getCellStatus(j, m))
                 }
             }
-            for (j in 0 until field[0].size) {
-                setCellStatus(0, j, CellConstants.EMPTY.value)
-            }
+        }
+        for (j in 0 until field[0].size) {
+            setCellStatus(0, j, CellConstants.EMPTY.value)
+        }
+    }
+
+    fun setPreferences(preferences: AppPreferences?) {
+        this.preferences = preferences
+    }
+
+    fun getCellStatus(row: Int, column: Int): Byte? {
+        return field[row][column]
+    }
+
+    private fun setCellStatus(row: Int, column: Int, status: Byte?) {
+        if (status != null) {
+            field[row][column] = status
         }
     }
 
@@ -252,4 +227,30 @@ class AppModel {
         score = 0
     }
 
+    private fun boostScore() {
+        score += 10
+        if (score > preferences?.getHighScore() as Int)
+            preferences?.saveHighScore(score)
+    }
+
+
+    fun isGameOver(): Boolean {
+        return currentState == Statuses.OVER.name
+    }
+
+    fun isGameActive(): Boolean {
+        return currentState == Statuses.ACTIVE.name
+    }
+
+    fun isGameAwaitingStart(): Boolean {
+        return currentState == Statuses.AWAITING_START.name
+    }
+
+    enum class Statuses {
+        AWAITING_START, ACTIVE, OVER
+    }
+
+    enum class Motions {
+        LEFT, RIGHT, DOWN, ROTATE
+    }
 }
